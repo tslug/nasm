@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+
+function command_installed()
+{
+	local package="$1"
+	type -P "$package" > /dev/null
+}
+
+function make_sure_package_installed()
+{
+
+	local os_type="$1"
+	local package="$2"
+	shift 2
+
+	if command_installed "$package" ; then
+		echoerr "Package [$package] already installed."
+		return 0
+	fi
+
+	if [[ "$os_type" == NixOS ]] ; then
+		nix-env --install "$package"
+	elif [[ "$os_type" == debian ]] ; then
+		sudo apt-get install -q "$package"
+	fi
+
+}
+
+function make_sure_packages_installed()
+{
+
+	local os_type="$1"
+	shift
+
+	declare -a packages=("$@")
+
+	local package
+	for package in "${packages[@]}" ; do
+		make_sure_package_installed "$os_type" "$package"
+	done
+
+}
+
+function perl_module_installed()
+{
+
+	local os_type="$1"
+	local perl_module="$2"
+	shift 2
+
+	perl -M"$perl_module" -e1 2> /dev/null
+
+}
+
+function install_perl_module()
+{
+
+	local os_type="$1"
+	local perl_module="$2"
+	shift 2
+
+	cpanm Module::"$perl_module"
+
+}
+
+function make_sure_perl_module_installed()
+{
+
+	local os_type="$1"
+	local perl_module="$2"
+	shift 2
+
+	if ! command_installed cpanm ; then
+		if [[ "$os_type" == NixOS ]] ; then
+			install_package cope
+		elif [[ "$os_type" == debian ]] ; then
+			install_package cpanminus
+		fi
+	fi
+
+	if ! perl_module_installed "$os_type" "$perl_module" ; then
+		install_perl_module "$os_type" "$perl_module"
+	fi
+
+}
+
+function make_sure_perl_modules_installed()
+{
+
+	local os_type="$1"
+	shift
+
+	declare -a perl_modules=("$@")
+
+	local perl_module
+	for perl_module in "${perl_modules[@]}" ; do
+		make_sure_perl_module_installed "$os_type" "$perl_module"
+	done
+
+}
+
+function adobe_font_installed()
+{
+
+	local adobe_font="$1"
+	shift
+
+	local top_dir=$(realpath "${BASH_SOURCE}/..")
+	local base_dir="$top_dir/fonts"
+
+	[[ -d "$base_dir/$adobe_font/TTF" ]]
+
+}
+
+function install_adobe_font()
+{
+
+	local adobe_font="$1"
+	shift
+
+	[[ ! -d fonts ]] && mkdir fonts
+
+	pushd fonts > /dev/null
+		git clone https://github.com/adobe-fonts/$adobe_font.git
+	popd > /dev/null
+
+}
+
+function make_sure_adobe_font_installed()
+{
+
+	local os_type="$1"
+	local adobe_font="$2"
+	shift 2
+
+	if ! adobe_font_installed "$adobe_font" ; then
+		install_adobe_font "$adobe_font"
+	fi
+
+}
+
+function make_sure_adobe_fonts_installed()
+{
+
+	local os_type="$1"
+	shift
+
+	declare -a adobe_fonts=("$@")
+
+	local adobe_font
+	for adobe_font in "${adobe_fonts[@]}" ; do
+		make_sure_adobe_font_installed "$os_type" "$adobe_font"
+	done
+
+}
+
+function sequence()
+{
+
+	source "/etc/os-release"
+	local os_type="$NAME"
+
+	make_sure_packages_installed "$os_type" perl asciidoc xmlto
+	make_sure_perl_modules_installed "$os_type" TTF Versions
+	make_sure_adobe_fonts_installed "$os_type" source-code-pro source-sans
+
+}
+
+sequence "$@"
+
